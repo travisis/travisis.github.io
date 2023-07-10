@@ -1,1 +1,115 @@
-Test
+
+<h3>前言</h3>
+<p>特征脚本系统通过 <span style="color: rgb(68,80,95);">Nashorn<span> ScriptEngine实现，但Nashorn引擎已在JDK 11中作为JEP 335的一部分被弃用，并已作为JEP 372的一部分从JDK15中删除。GraalVM 为JavaScript，Ruby，Python和许多其他语言提供了运行时。GraalVM的多语言功能使得在单个应用程序中混合编程语言成为可能。在此简单对比两者，并提供一些迁移参考。<br /></span></span></p>
+<p><span style="color: rgb(68,80,95);"><span>示例使用的GraalVM：<span style="color: rgb(31,35,40);">Community Edition </span>22.3.1，基于 Java 11，Windows平台</span></span></p>
+<h3 style="text-align: left;">GraalVM Updater</h3>
+<p>GraalVM Updater（gu）是一个命令行工具，用于安装和管理可选的GraalVM语言运行时和实用程序。它在GraalVM安装路径下可用。为了帮助进行安装，语言运行时和实用程序已预先打包为 JAR 文件，并在文档中作为&ldquo;组件&rdquo;引用。js也作为一个组件，因此要先进行安装。</p>
+<p>以下命令在graalVM安装路径bin目录下执行，例如 ROOT/graalVM/bin</p>
+<h4>检查可用组件</h4>
+<ul>
+<li>要检查 GraalVM 安装中已附带哪些组件或已安装哪些组件</li></ul><ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="64ca3cd0-3d9e-462b-af50-39c138c25d4c"><ac:parameter ac:name="language">bash</ac:parameter><ac:plain-text-body><![CDATA[# windows
+./gu.cmd list
+# linux
+./gu list]]></ac:plain-text-body></ac:structured-macro>
+<p><br /></p>
+<ul>
+<li>要检查哪些组件可供当前 GraalVM 版本安装</li></ul><ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="22eca33c-0ca5-4844-87a9-883a1a62cab9"><ac:parameter ac:name="language">bash</ac:parameter><ac:plain-text-body><![CDATA[./gu.cmd available
+Downloading: Component catalog from www.graalvm.org
+ComponentId              Version             Component name                Stability                     Origin
+---------------------------------------------------------------------------------------------------------------------------------
+espresso                 22.3.1              Java on Truffle               Experimental                  github.com
+js                       22.3.1              Graal.js                      Supported                     github.com
+llvm                     22.3.1              LLVM Runtime Core             Experimental                  github.com
+llvm-toolchain           22.3.1              LLVM.org toolchain            Supported                     github.com
+native-image             22.3.1              Native Image                  Early adopter                 github.com
+nodejs                   22.3.1              Graal.nodejs                  Supported                     github.com
+visualvm                 22.3.1              VisualVM                      Experimental                  github.com
+wasm                     22.3.1              GraalWasm                     Experimental                  github.com
+
+]]></ac:plain-text-body></ac:structured-macro>
+<p><br /></p>
+<h4>安装组件</h4>
+<ul>
+<li>使用 ComponentId 安装组件</li></ul><ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="53a6da7d-fdd3-4ca8-a9e3-e8ad260897fb"><ac:parameter ac:name="language">bash</ac:parameter><ac:plain-text-body><![CDATA[./gu.cmd install js]]></ac:plain-text-body></ac:structured-macro>
+<h3 style="text-align: left;">GraalVM JavaScript 实现</h3>
+<p>GraalVM 提供了一个符合 ECMAScript 的运行时来执行 JavaScript&nbsp; 应用程序。它以高性能执行应用程序，并提供 GraalVM 堆栈的所有优点，包括语言互操作性和通用工具。</p>
+<h4>与 Java 的互操作性</h4>
+<ul>
+<li>从 JavaScript 访问 Java，使用 Java.type。从 Java 访问 JavaScript ，在 Java 程序中嵌入 JavaScript 上下文来执行 。</li></ul><ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="cec78b25-515f-46e5-a374-bbd8522169ba"><ac:parameter ac:name="language">java</ac:parameter><ac:plain-text-body><![CDATA[    public static void main(String[] strings) {
+        String JS_CODE = "var BigInteger = Java.type('java.math.BigInteger');" +
+                "console.log(BigInteger.valueOf(2).pow(2).toString());";
+        try (
+                Context context = Context.newBuilder("js")
+                        .allowAllAccess(true)
+                        .allowHostAccess(HostAccess.ALL)
+                        .allowHostClassLookup(className -> true)
+                        .build()
+        ) {
+            context.eval("js", JS_CODE);
+        }
+    }]]></ac:plain-text-body></ac:structured-macro>
+<h4>在 GraalVM JavaScript 中使用 JavaScript 模块和包</h4>
+<ul>
+<li>模块命名空间导出</li></ul>
+<p>--js.esm-eval-returns-exports 选项可用于将 ES 模块命名空间导出的对象公开给多语言上下文。以modeling-java中的特征原型作为示例：</p><ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="a3184522-1864-48f1-af19-f5675cbd220f"><ac:parameter ac:name="language">java</ac:parameter><ac:plain-text-body><![CDATA[    public static void main(String[] strings) {
+        String script = "var ScriptFeaturePrototype = Java.type ('org.example.ScriptFeaturePrototype');" +
+                "var applyFunction = function() {print('apply to do...')};" +
+                "let prototype = new ScriptFeaturePrototype('exampleId', applyFunction);" +
+                "export const resultKey = prototype";
+
+        try (
+                Context context = Context.newBuilder("js")
+                        .allowAllAccess(true)
+                        .allowHostAccess(HostAccess.ALL)
+                        .allowHostClassLookup(className -> true)
+                        .option("js.esm-eval-returns-exports", "true")
+                        .build()
+        ) {
+            Source source = Source.newBuilder("js", script, "")
+                    .mimeType("application/javascript+module")
+                    .build();
+            Value exports = context.eval(source);
+            Value prototypeValue = exports.getMember("resultKey");
+            ScriptFeaturePrototype featurePrototype = prototypeValue.asHostObject();
+            featurePrototype.apply();
+        } catch (PolyglotException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+public interface ScriptFeatureFunction {
+    void execute();
+}
+
+public class ScriptFeaturePrototype {
+    private String id;
+
+    private ScriptFeatureFunction featureFunction;
+
+    public ScriptFeaturePrototype(String id, ScriptFeatureFunction featureFunction) {
+        this.id = id;
+        this.featureFunction = featureFunction;
+    }
+
+    public void apply() {
+        featureFunction.execute();
+    }
+}]]></ac:plain-text-body></ac:structured-macro>
+<p><br /></p>
+<p><br /></p>
+<ul>
+<li>
+<p style="text-align: left;">ECMAScript Modules (ESM)<span>&nbsp;</span></p></li></ul>
+<p><span>GraalVM JavaScript 支持完整的 ES 模块规范，包括导入语句、使用 import（） 动态导入模块以及顶级 await 等高级功能。ECMAScript 模块源代码应该具有 Mime 类型&ldquo;application/javascript+module&rdquo;。</span></p>
+<ul>
+<li><span>&nbsp;CommonJS 和 require</span></li></ul>
+<p><span>默认情况下，Context API 不支持 CommonJS 模块，并且没有内置的 require（） 函数。为了从Java中的上下文加载和使用，需要将CommonJS模块捆绑到一个独立的JavaScript源文件中。对 CommonJS 模块的支持可以通过 js.commonjs-require 选项启用。</span></p>
+<h3 style="text-align: left;">Nashorn to GraalVM JavaScript</h3>
+<h4>Nashorn 兼容性模式</h4>
+<h4>Nashorn 语法扩展</h4>
+<h4 style="text-align: left;">GraalVM JavaScript 对比&nbsp;Nashorn</h4>
+<p><br /></p>
+<p><br /></p>
+<p><br /></p>
+<p>参考链接：<a href="https://www.graalvm.org/latest/reference-manual/">graalVM 参考手册</a></p>
+<p><br /></p>
