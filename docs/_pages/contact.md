@@ -6,4 +6,4 @@ category: Jekyll
 layout: post
 ---
 
-This is an contact page.
+Raise issues in https://github.com/travisis/travisis.github.io
