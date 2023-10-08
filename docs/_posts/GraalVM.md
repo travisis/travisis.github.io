@@ -1,0 +1,154 @@
+---
+title: 2023-10-08未命名文件 
+tags: 新建,模板,小书匠
+category: /小书匠/日记/2023-10
+renderNumberedHeading: true
+grammar_cjkRuby: true
+---
+
+
+前言
+
+特征脚本系统通过 Nashorn ScriptEngine实现，但Nashorn引擎已在JDK 11中作为JEP 335的一部分被弃用，并已作为JEP 372的一部分从JDK15中删除。GraalVM 为JavaScript，Ruby，Python和许多其他语言提供了运行时。GraalVM的多语言功能使得在单个应用程序中混合编程语言成为可能。在此简单对比两者，并提供一些迁移参考。
+
+
+示例使用的GraalVM：Community Edition 22.3.1，基于 Java 11，Windows平台
+
+GraalVM Updater
+
+GraalVM Updater（gu）是一个命令行工具，用于安装和管理可选的GraalVM语言运行时和实用程序。它在GraalVM安装路径下可用。为了帮助进行安装，语言运行时和实用程序已预先打包为 JAR 文件，并在文档中作为“组件”引用。js也作为一个组件，因此要先进行安装。
+
+以下命令在graalVM安装路径bin目录下执行，例如 ROOT/graalVM/bin
+
+检查可用组件
+要检查 GraalVM 安装中已附带哪些组件或已安装哪些组件
+# windows
+./gu.cmd list
+# linux
+./gu list
+
+
+
+
+- 要检查哪些组件可供当前 GraalVM 版本安装
+./gu.cmd available
+Downloading: Component catalog from www.graalvm.org
+ComponentId              Version             Component name                Stability                     Origin
+---------------------------------------------------------------------------------------------------------------------------------
+espresso                 22.3.1              Java on Truffle               Experimental                  github.com
+js                       22.3.1              Graal.js                      Supported                     github.com
+llvm                     22.3.1              LLVM Runtime Core             Experimental                  github.com
+llvm-toolchain           22.3.1              LLVM.org toolchain            Supported                     github.com
+native-image             22.3.1              Native Image                  Early adopter                 github.com
+nodejs                   22.3.1              Graal.nodejs                  Supported                     github.com
+visualvm                 22.3.1              VisualVM                      Experimental                  github.com
+wasm                     22.3.1              GraalWasm                     Experimental                  github.com
+
+
+
+
+
+
+安装组件
+使用 ComponentId 安装组件
+./gu.cmd install js
+GraalVM JavaScript 实现
+
+GraalVM 提供了一个符合 ECMAScript 的运行时来执行 JavaScript  应用程序。它以高性能执行应用程序，并提供 GraalVM 堆栈的所有优点，包括语言互操作性和通用工具。
+
+与 Java 的互操作性
+从 JavaScript 访问 Java，使用 Java.type。从 Java 访问 JavaScript ，在 Java 程序中嵌入 JavaScript 上下文来执行 。
+    public static void main(String[] strings) {
+        String JS_CODE = "var BigInteger = Java.type('java.math.BigInteger');" +
+                "console.log(BigInteger.valueOf(2).pow(2).toString());";
+        try (
+                Context context = Context.newBuilder("js")
+                        .allowAllAccess(true)
+                        .allowHostAccess(HostAccess.ALL)
+                        .allowHostClassLookup(className -> true)
+                        .build()
+        ) {
+            context.eval("js", JS_CODE);
+        }
+    }
+在 GraalVM JavaScript 中使用 JavaScript 模块和包
+模块命名空间导出
+
+--js.esm-eval-returns-exports 选项可用于将 ES 模块命名空间导出的对象公开给多语言上下文。以modeling-java中的特征原型作为示例：
+
+    public static void main(String[] strings) {
+        String script = "var ScriptFeaturePrototype = Java.type ('org.example.ScriptFeaturePrototype');" +
+                "var applyFunction = function() {print('apply to do...')};" +
+                "let prototype = new ScriptFeaturePrototype('exampleId', applyFunction);" +
+                "export const resultKey = prototype";
+
+        try (
+                Context context = Context.newBuilder("js")
+                        .allowAllAccess(true)
+                        .allowHostAccess(HostAccess.ALL)
+                        .allowHostClassLookup(className -> true)
+                        .option("js.esm-eval-returns-exports", "true")
+                        .build()
+        ) {
+            Source source = Source.newBuilder("js", script, "")
+                    .mimeType("application/javascript+module")
+                    .build();
+            Value exports = context.eval(source);
+            Value prototypeValue = exports.getMember("resultKey");
+            ScriptFeaturePrototype featurePrototype = prototypeValue.asHostObject();
+            featurePrototype.apply();
+        } catch (PolyglotException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+public interface ScriptFeatureFunction {
+    void execute();
+}
+
+public class ScriptFeaturePrototype {
+    private String id;
+
+    private ScriptFeatureFunction featureFunction;
+
+    public ScriptFeaturePrototype(String id, ScriptFeatureFunction featureFunction) {
+        this.id = id;
+        this.featureFunction = featureFunction;
+    }
+
+    public void apply() {
+        featureFunction.execute();
+    }
+}
+
+
+
+
+
+
+
+ECMAScript Modules (ESM) 
+
+GraalVM JavaScript 支持完整的 ES 模块规范，包括导入语句、使用 import（） 动态导入模块以及顶级 await 等高级功能。ECMAScript 模块源代码应该具有 Mime 类型“application/javascript+module”。
+
+ CommonJS 和 require
+
+默认情况下，Context API 不支持 CommonJS 模块，并且没有内置的 require（） 函数。为了从Java中的上下文加载和使用，需要将CommonJS模块捆绑到一个独立的JavaScript源文件中。对 CommonJS 模块的支持可以通过 js.commonjs-require 选项启用。
+
+Nashorn to GraalVM JavaScript
+Nashorn 兼容性模式
+Nashorn 语法扩展
+GraalVM JavaScript 对比 Nashorn
+
+
+
+
+
+
+
+
+
+
+参考链接：graalVM 参考手册
+
+
